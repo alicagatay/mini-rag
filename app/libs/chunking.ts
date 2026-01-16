@@ -1,26 +1,26 @@
 export type Chunk = {
-	id: string;
-	content: string;
-	metadata: {
-		source: string;
-		chunkIndex: number;
-		totalChunks: number;
-		startChar: number;
-		endChar: number;
-		[key: string]: string | number | boolean | string[];
-	};
+  id: string;
+  content: string;
+  metadata: {
+    source: string;
+    chunkIndex: number;
+    totalChunks: number;
+    startChar: number;
+    endChar: number;
+    [key: string]: string | number | boolean | string[];
+  };
 };
 
 // TODO: Define LinkedInPost type
 // Should have: text (string), date (string), url (string), likes (number)
 export type LinkedInPost = {
-	// YOUR CODE HERE
+  // YOUR CODE HERE
 };
 
 // TODO: Define MediumArticle type
 // Should have: title (string), text (string), date (string), url (string)
 export type MediumArticle = {
-	// YOUR CODE HERE
+  // YOUR CODE HERE
 };
 
 /**
@@ -32,71 +32,71 @@ export type MediumArticle = {
  * @returns Array of text chunks
  */
 export function chunkText(
-	text: string,
-	chunkSize: number = 500,
-	overlap: number = 50,
-	source: string = 'unknown'
+  text: string,
+  chunkSize: number = 500,
+  overlap: number = 50,
+  source: string = "unknown",
 ): Chunk[] {
-	const chunks: Chunk[] = [];
-	const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const chunks: Chunk[] = [];
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
 
-	let currentChunk = '';
-	let chunkStart = 0;
-	let chunkIndex = 0;
+  let currentChunk = "";
+  let chunkStart = 0;
+  let chunkIndex = 0;
 
-	for (let i = 0; i < sentences.length; i++) {
-		const sentence = sentences[i].trim() + '.';
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i].trim() + ".";
 
-		// If adding this sentence would exceed chunk size, create a chunk
-		if (
-			currentChunk.length + sentence.length > chunkSize &&
-			currentChunk.length > 0
-		) {
-			const chunk: Chunk = {
-				id: `${source}-chunk-${chunkIndex}`,
-				content: currentChunk.trim(),
-				metadata: {
-					source,
-					chunkIndex,
-					totalChunks: 0, // Will be updated later
-					startChar: chunkStart,
-					endChar: chunkStart + currentChunk.length,
-				},
-			};
+    // If adding this sentence would exceed chunk size, create a chunk
+    if (
+      currentChunk.length + sentence.length > chunkSize &&
+      currentChunk.length > 0
+    ) {
+      const chunk: Chunk = {
+        id: `${source}-chunk-${chunkIndex}`,
+        content: currentChunk.trim(),
+        metadata: {
+          source,
+          chunkIndex,
+          totalChunks: 0, // Will be updated later
+          startChar: chunkStart,
+          endChar: chunkStart + currentChunk.length,
+        },
+      };
 
-			chunks.push(chunk);
+      chunks.push(chunk);
 
-			// Start new chunk with overlap
-			const overlapText = getLastWords(currentChunk, overlap);
-			currentChunk = overlapText + ' ' + sentence;
-			chunkStart = chunk.metadata.endChar - overlapText.length;
-			chunkIndex++;
-		} else {
-			currentChunk += (currentChunk ? ' ' : '') + sentence;
-		}
-	}
+      // Start new chunk with overlap
+      const overlapText = getLastWords(currentChunk, overlap);
+      currentChunk = overlapText + " " + sentence;
+      chunkStart = chunk.metadata.endChar - overlapText.length;
+      chunkIndex++;
+    } else {
+      currentChunk += (currentChunk ? " " : "") + sentence;
+    }
+  }
 
-	// Add final chunk if it has content
-	if (currentChunk.trim()) {
-		chunks.push({
-			id: `${source}-chunk-${chunkIndex}`,
-			content: currentChunk.trim(),
-			metadata: {
-				source,
-				chunkIndex,
-				totalChunks: 0,
-				startChar: chunkStart,
-				endChar: chunkStart + currentChunk.length,
-			},
-		});
-	}
+  // Add final chunk if it has content
+  if (currentChunk.trim()) {
+    chunks.push({
+      id: `${source}-chunk-${chunkIndex}`,
+      content: currentChunk.trim(),
+      metadata: {
+        source,
+        chunkIndex,
+        totalChunks: 0,
+        startChar: chunkStart,
+        endChar: chunkStart + currentChunk.length,
+      },
+    });
+  }
 
-	// Update total chunks count
-	chunks.forEach((chunk) => {
-		chunk.metadata.totalChunks = chunks.length;
-	});
+  // Update total chunks count
+  chunks.forEach((chunk) => {
+    chunk.metadata.totalChunks = chunks.length;
+  });
 
-	return chunks;
+  return chunks;
 }
 
 /**
@@ -132,11 +132,40 @@ export function chunkText(
  * 8. Return the result
  */
 function getLastWords(text: string, maxLength: number): string {
-	// TODO: Implement this function!
-	// YOUR CODE HERE
+  // Step 1: If text is already short enough, return it all
+  // No need to truncate if we're under the limit
+  if (text.length <= maxLength) {
+    return text;
+  }
 
-	// Placeholder return - replace with your implementation
-	throw new Error('getLastWords not implemented yet!');
+  // Step 2: Split text into individual words
+  // We'll work with complete words to avoid cutting mid-word
+  const words: string[] = text.split(" ");
+
+  // Step 3: Start with empty result - we'll build it backwards
+  let result: string = "";
+
+  // Step 4: Loop through words BACKWARDS (from end to start)
+  // This ensures we get the LAST words, not the first
+  for (let i: number = words.length - 1; i >= 0; i--) {
+    const word: string = words[i];
+
+    // Calculate what the new result would look like if we added this word
+    // If result is empty, just use the word; otherwise prepend with a space
+    const newResult: string = result ? word + " " + result : word;
+
+    // Step 5 & 6: Check if adding this word would exceed maxLength
+    // If it would, stop - we've collected as many words as we can fit
+    if (newResult.length > maxLength) {
+      break;
+    }
+
+    // Step 7: Word fits! Prepend it to our result
+    result = newResult;
+  }
+
+  // Step 8: Return the result (trimmed to handle edge cases)
+  return result.trim();
 }
 
 /**
@@ -171,12 +200,12 @@ function getLastWords(text: string, maxLength: number): string {
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function extractLinkedInPosts(_csvContent: string): LinkedInPost[] {
-	// TODO: Implement this function!
-	// YOUR CODE HERE
-	// Remove the underscore from _csvContent when you start implementing
+  // TODO: Implement this function!
+  // YOUR CODE HERE
+  // Remove the underscore from _csvContent when you start implementing
 
-	// Placeholder return - replace with your implementation
-	throw new Error('extractLinkedInPosts not implemented yet!');
+  // Placeholder return - replace with your implementation
+  throw new Error("extractLinkedInPosts not implemented yet!");
 }
 
 /**
@@ -215,12 +244,12 @@ export function extractLinkedInPosts(_csvContent: string): LinkedInPost[] {
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function extractMediumArticle(
-	_htmlContent: string
+  _htmlContent: string,
 ): MediumArticle | null {
-	// TODO: Implement this function!
-	// YOUR CODE HERE
-	// Remove the underscore from _htmlContent when you start implementing
+  // TODO: Implement this function!
+  // YOUR CODE HERE
+  // Remove the underscore from _htmlContent when you start implementing
 
-	// Placeholder return - replace with your implementation
-	throw new Error('extractMediumArticle not implemented yet!');
+  // Placeholder return - replace with your implementation
+  throw new Error("extractMediumArticle not implemented yet!");
 }
