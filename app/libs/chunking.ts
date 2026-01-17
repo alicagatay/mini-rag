@@ -34,12 +34,43 @@ export type MediumArticle = {
 };
 
 /**
- * Splits text into smaller chunks for processing
+ * Splits text into smaller, overlapping chunks for embedding.
+ *
+ * WHY CHUNKING IS CRITICAL FOR RAG:
+ * LLMs have token limits (4K, 8K, 128K tokens). Even if they could process
+ * entire articles, search results would be too broad. Chunking allows:
+ * - Precise retrieval: Return only the relevant paragraphs, not whole articles
+ * - Better context: Focus the LLM on specific information
+ * - Scalability: Process and search millions of chunks efficiently
+ *
+ * HOW IT WORKS:
+ * 1. Split text by sentences (preserves natural language boundaries)
+ * 2. Combine sentences until we reach chunkSize
+ * 3. Create a new chunk
+ * 4. Start next chunk with overlap from the previous one
+ *
+ * WHY OVERLAP?
+ * Imagine this text: "React hooks revolutionized development. They made state management simple."
+ * Without overlap:
+ *   Chunk 1: "React hooks revolutionized development."
+ *   Chunk 2: "They made state management simple."
+ * Problem: "They" in chunk 2 is ambiguous without context!
+ *
+ * With overlap:
+ *   Chunk 1: "React hooks revolutionized development."
+ *   Chunk 2: "React hooks revolutionized development. They made state management simple."
+ * Now chunk 2 has context!
+ *
+ * CHUNKING STRATEGIES (we use sentence-based):
+ * - Fixed size: Simple but can split mid-sentence (bad)
+ * - Sentence-based: Preserves natural boundaries (what we do)
+ * - Semantic: Use AI to detect topic changes (expensive but best)
+ *
  * @param text The text to chunk
- * @param chunkSize Maximum size of each chunk
- * @param overlap Number of characters to overlap between chunks
- * @param source Source identifier (typically URL)
- * @returns Array of text chunks
+ * @param chunkSize Maximum size of each chunk in characters (500 is good for technical content)
+ * @param overlap Number of characters to overlap between chunks (50 = ~10 words)
+ * @param source Source identifier (typically URL) - used for tracking which document chunks came from
+ * @returns Array of text chunks with metadata
  */
 export function chunkText(
   text: string,
