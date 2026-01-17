@@ -14,13 +14,23 @@ export type Chunk = {
 // TODO: Define LinkedInPost type
 // Should have: text (string), date (string), url (string), likes (number)
 export type LinkedInPost = {
-  // YOUR CODE HERE
+  text: string;
+  date: string;
+  url: string;
+  likes: number;
 };
 
 // TODO: Define MediumArticle type
 // Should have: title (string), text (string), date (string), url (string)
 export type MediumArticle = {
-  // YOUR CODE HERE
+  // metadata
+  text: string;
+  url: string;
+  author: string;
+  title: string;
+  date: string;
+  source: string;
+  language: string;
 };
 
 /**
@@ -132,40 +142,34 @@ export function chunkText(
  * 8. Return the result
  */
 function getLastWords(text: string, maxLength: number): string {
-  // Step 1: If text is already short enough, return it all
-  // No need to truncate if we're under the limit
+  // 1. Check if text.length <= maxLength, if so return text
   if (text.length <= maxLength) {
     return text;
   }
+  // 2. Split text into words using .split(' ')
+  const wordList: string[] = text.split(" ");
+  // 3. Start with empty result string
+  let resultString: string = "";
+  // 4. Loop through words backwards
+  for (let i = wordList.length - 1; i >= 0; i--) {
+    // 5. For each word, check if adding it would exceed maxLength.
+    let newWord: string = wordList[i];
 
-  // Step 2: Split text into individual words
-  // We'll work with complete words to avoid cutting mid-word
-  const words: string[] = text.split(" ");
-
-  // Step 3: Start with empty result - we'll build it backwards
-  let result: string = "";
-
-  // Step 4: Loop through words BACKWARDS (from end to start)
-  // This ensures we get the LAST words, not the first
-  for (let i: number = words.length - 1; i >= 0; i--) {
-    const word: string = words[i];
-
-    // Calculate what the new result would look like if we added this word
-    // If result is empty, just use the word; otherwise prepend with a space
-    const newResult: string = result ? word + " " + result : word;
-
-    // Step 5 & 6: Check if adding this word would exceed maxLength
-    // If it would, stop - we've collected as many words as we can fit
-    if (newResult.length > maxLength) {
-      break;
+    // 5a. Decide whether the new word needs a space after it
+    //     in the result string.
+    if (resultString.length) {
+      newWord = wordList[i] + " ";
     }
-
-    // Step 7: Word fits! Prepend it to our result
-    result = newResult;
+    // 6. If it would exceed, break the loop
+    // 7. Otherwise, prepend the word to result
+    if (resultString.length + newWord.length > maxLength) {
+      break;
+    } else {
+      resultString = newWord + resultString;
+    }
   }
-
-  // Step 8: Return the result (trimmed to handle edge cases)
-  return result.trim();
+  // 8. Return the result
+  return resultString;
 }
 
 /**
@@ -242,14 +246,56 @@ export function extractLinkedInPosts(_csvContent: string): LinkedInPost[] {
  * - Use .replace(/\s+/g, ' ') to normalize whitespace
  * - Use try/catch to handle errors and return null
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function extractMediumArticle(
-  _htmlContent: string,
+  htmlContent: string,
 ): MediumArticle | null {
-  // TODO: Implement this function!
-  // YOUR CODE HERE
-  // Remove the underscore from _htmlContent when you start implementing
+  // 1. Extract title from <title> tag
+  const titleMatch = htmlContent.match(/<title>(.*?)<\/title>/);
+  if (!titleMatch) return null;
+  const title = titleMatch[1];
 
-  // Placeholder return - replace with your implementation
-  throw new Error("extractMediumArticle not implemented yet!");
+  // 2. Extract date from <time> tag's datetime attribute
+  const dateMatch = htmlContent.match(
+    /<time[^>]*class="dt-published"[^>]*datetime="([^"]*)"/,
+  );
+  if (!dateMatch) return null;
+  const date = dateMatch[1];
+
+  // 3. Extract URL from canonical link
+  const urlMatch = htmlContent.match(
+    /<a[^>]*href="([^"]*)"[^>]*class="p-canonical"/,
+  );
+  if (!urlMatch) return null;
+  const url = urlMatch[1];
+
+  // 4. Extract text content from body section
+  const bodyMatch = htmlContent.match(
+    /<section[^>]*data-field="body"[^>]*class="e-content"[^>]*>([\s\S]*?)<\/section>/,
+  );
+  if (!bodyMatch) return null;
+
+  // Remove HTML tags
+  let text = bodyMatch[1].replace(/<[^>]+>/g, "");
+  // Normalize whitespace
+  text = text.replace(/\s+/g, " ").trim();
+
+  // Extract author from footer anchor tag with class p-author h-card
+  const authorMatch = htmlContent.match(
+    /<a[^>]*class="p-author h-card"[^>]*>([^<]*)<\/a>/,
+  );
+  const author = authorMatch ? authorMatch[1] : "Unknown";
+
+  // Extract language (optional, from html lang attribute or default)
+  const langMatch = htmlContent.match(/<html[^>]*lang="([^"]*)"/);
+  const language = langMatch ? langMatch[1] : "en";
+
+  return {
+    text,
+    url,
+    author,
+    title,
+    date,
+    source: "medium",
+    language,
+  };
 }
