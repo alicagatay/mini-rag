@@ -204,43 +204,115 @@ function getLastWords(text: string, maxLength: number): string {
 }
 
 /**
- * TODO: Implement extractLinkedInPosts function
+ * Extracts LinkedIn posts from CSV data exported from LinkedIn.
  *
- * This function should extract LinkedIn posts from CSV data.
+ * WHY THIS PARSING IS COMPLEX:
+ * LinkedIn post text can contain commas, newlines, and quotes - all characters
+ * that have special meaning in CSV files. The CSV format handles this by:
+ * - Wrapping fields containing special characters in double quotes
+ * - Escaping internal quotes by doubling them ("" instead of ")
+ * - Allowing fields to span multiple lines when quoted
+ *
+ * COLUMN MAPPING (from LinkedIn CSV export):
+ * - text → post content (the actual post body)
+ * - createdAt (TZ=America/Los_Angeles) → date (when the post was published)
+ * - link → url (direct link to the LinkedIn post)
+ * - numReactions → likes (engagement count)
  *
  * @param csvContent The CSV file content as a string
  * @returns Array of LinkedInPost objects with text, date, url, and likes
- *
- * Requirements:
- * 1. Parse the CSV header to find column indices for:
- *    - text: the post content
- *    - createdAt (TZ=America/Los_Angeles): the date
- *    - link: the URL
- *    - numReactions: the number of likes
- *
- * 2. Handle CSV parsing properly:
- *    - Fields can be quoted with double quotes
- *    - Quoted fields can contain commas
- *    - Use a simple parser or handle quoted fields manually
- *
- * 3. Skip the header row and process each data row
- *
- * 4. Return an array of LinkedInPost objects
- *
- * Hints:
- * - Split by newlines to get rows
- * - For each row, carefully parse considering quoted fields
- * - Extract the values at the correct column indices
- * - Convert numReactions to a number using parseInt()
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function extractLinkedInPosts(_csvContent: string): LinkedInPost[] {
-  // TODO: Implement this function!
-  // YOUR CODE HERE
-  // Remove the underscore from _csvContent when you start implementing
+export function extractLinkedInPosts(csvContent: string): LinkedInPost[] {
+  const csvLines = csvContent.split("\n");
+  const headerRow = csvLines[0];
 
-  // Placeholder return - replace with your implementation
-  throw new Error("extractLinkedInPosts not implemented yet!");
+  // Find column indices from header row
+  // This makes the parser resilient to column order changes in LinkedIn exports
+  const columnNames = headerRow.split(",");
+  const textColumnIndex = columnNames.indexOf("text");
+  const dateColumnIndex = columnNames.findIndex((col) =>
+    col.includes("createdAt"),
+  );
+  const urlColumnIndex = columnNames.indexOf("link");
+  const likesColumnIndex = columnNames.indexOf("numReactions");
+
+  const extractedPosts: LinkedInPost[] = [];
+
+  // Process each row (skip header at index 0)
+  let currentLineIndex = 1;
+  while (currentLineIndex < csvLines.length) {
+    const currentLine = csvLines[currentLineIndex];
+    if (!currentLine.trim()) {
+      currentLineIndex++;
+      continue;
+    }
+
+    // Parse CSV row handling quoted fields with embedded commas/newlines
+    const parsedFields: string[] = [];
+    let currentFieldContent = "";
+    let isInsideQuotedField = false;
+    let charIndex = 0;
+    let lineBeingParsed = currentLine;
+
+    while (true) {
+      if (charIndex >= lineBeingParsed.length) {
+        // If we're inside quotes, the field spans multiple lines
+        if (isInsideQuotedField && currentLineIndex + 1 < csvLines.length) {
+          currentFieldContent += "\n";
+          currentLineIndex++;
+          lineBeingParsed = csvLines[currentLineIndex];
+          charIndex = 0;
+          continue;
+        } else {
+          // End of field at end of line
+          parsedFields.push(currentFieldContent);
+          break;
+        }
+      }
+
+      const currentChar = lineBeingParsed[charIndex];
+
+      if (currentChar === '"') {
+        if (isInsideQuotedField && lineBeingParsed[charIndex + 1] === '"') {
+          // Escaped quote ("") - add single quote to field
+          currentFieldContent += '"';
+          charIndex += 2;
+        } else {
+          // Toggle quote mode
+          isInsideQuotedField = !isInsideQuotedField;
+          charIndex++;
+        }
+      } else if (currentChar === "," && !isInsideQuotedField) {
+        // Field separator - save current field and start new one
+        parsedFields.push(currentFieldContent);
+        currentFieldContent = "";
+        charIndex++;
+      } else {
+        currentFieldContent += currentChar;
+        charIndex++;
+      }
+    }
+
+    // Extract values from parsed fields if we have enough columns
+    const maxRequiredIndex = Math.max(
+      textColumnIndex,
+      dateColumnIndex,
+      urlColumnIndex,
+      likesColumnIndex,
+    );
+    if (parsedFields.length > maxRequiredIndex) {
+      extractedPosts.push({
+        text: parsedFields[textColumnIndex] || "",
+        date: parsedFields[dateColumnIndex] || "",
+        url: parsedFields[urlColumnIndex] || "",
+        likes: parseInt(parsedFields[likesColumnIndex] || "0", 10) || 0,
+      });
+    }
+
+    currentLineIndex++;
+  }
+
+  return extractedPosts;
 }
 
 /**
