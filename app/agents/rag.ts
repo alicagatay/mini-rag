@@ -4,9 +4,46 @@ import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { qdrantClient } from "../libs/qdrant";
 import { cohereClient } from "../libs/cohere";
+import {
+  checkQueryRelevance,
+  SIMILARITY_SCORE_THRESHOLD,
+  buildRejectionMessage,
+  buildNoContentFoundMessage,
+  createStaticTextStream,
+} from "./guardrails";
 
 export async function ragAgent(request: AgentRequest): Promise<AgentResponse> {
   const { query } = request;
+
+  /**
+   * GUARDRAIL LAYER 1: LLM Classification
+   *
+   * Before any expensive operations (embedding, vector search, reranking),
+   * we use a cheap LLM call (gpt-4o-mini) to check if the query is relevant
+   * to our knowledge base topics.
+   *
+   * WHY DO THIS FIRST?
+   * - Cost: gpt-4o-mini classification costs ~$0.0001 per query
+   * - Full RAG pipeline costs ~$0.01-0.03 per query (100x more!)
+   * - Rejecting irrelevant queries early saves significant costs at scale
+   *
+   * WHAT GETS REJECTED?
+   * - Obviously off-topic queries: "What's the weather?", "Tell me a joke"
+   * - Unrelated domains: recipes, sports, general trivia
+   * - The classifier is generous - tangentially related queries pass through
+   */
+  const relevanceCheck = await checkQueryRelevance(query);
+
+  if (!relevanceCheck.isRelevant) {
+    console.log(
+      `Query rejected by LLM guardrail: "${query}" - Reason: ${relevanceCheck.reason}`,
+    );
+
+    // Return a friendly message explaining what the agent can help with
+    // Using createStaticTextStream to return the EXACT message without LLM processing
+    // This saves cost (no GPT-4o call) and ensures consistent rejection messages
+    return createStaticTextStream(buildRejectionMessage());
+  }
 
   const embedding = await openaiClient.embeddings.create({
     model: "text-embedding-3-small",
@@ -29,12 +66,49 @@ export async function ragAgent(request: AgentRequest): Promise<AgentResponse> {
   console.log("linkedInPosts", JSON.stringify(linkedInPosts, null, 2));
   console.log("articles", JSON.stringify(articles, null, 2));
 
+  /**
+   * GUARDRAIL LAYER 2: Similarity Score Threshold
+   *
+   * Even if the LLM classifier thought the query was relevant, the vector
+   * search results might not have any good matches. This happens when:
+   * - The query is about a niche topic not covered in indexed content
+   * - The LLM was too generous in classification
+   * - The query uses unusual phrasing that doesn't match embeddings well
+   *
+   * WHY 0.5 THRESHOLD?
+   * Cosine similarity interpretation for text embeddings:
+   * - 0.7-1.0: Highly relevant (same topic, similar meaning)
+   * - 0.5-0.7: Moderately relevant (related topic)
+   * - 0.3-0.5: Weakly relevant (tangential connection)
+   * - < 0.3: Not relevant (different topics)
+   *
+   * We use 0.5 as a balanced threshold - strict enough to filter noise,
+   * lenient enough to allow related content through.
+   */
+  const relevantPosts = linkedInPosts.filter(
+    (post) => post.score >= SIMILARITY_SCORE_THRESHOLD,
+  );
+  const relevantArticles = articles.filter(
+    (article) => article.score >= SIMILARITY_SCORE_THRESHOLD,
+  );
+
+  // If no results meet the similarity threshold, reject the query
+  if (relevantPosts.length === 0 && relevantArticles.length === 0) {
+    console.log(
+      `Query rejected by similarity threshold: "${query}" - No results above ${SIMILARITY_SCORE_THRESHOLD}`,
+    );
+
+    // Return the exact "no content found" message without LLM processing
+    return createStaticTextStream(buildNoContentFoundMessage());
+  }
+
+  // Use only the relevant results for reranking
   const rerankedDocuments = await cohereClient.rerank({
     model: "rerank-english-v3.0",
     query: query,
     documents: [
-      ...linkedInPosts.map((post) => post.payload?.content as string),
-      ...articles.map((article) => article.payload?.content as string),
+      ...relevantPosts.map((post) => post.payload?.content as string),
+      ...relevantArticles.map((article) => article.payload?.content as string),
     ],
     topN: 10,
     returnDocuments: true,
